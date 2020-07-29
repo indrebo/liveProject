@@ -7,7 +7,7 @@ def getfiles(folder):
     extension = "*.pdf"
     filepath = folder + "/**/" + extension
     for file in glob.iglob(filepath, recursive=True):
-        files.append(os.path.basename(file))
+        files.append(file)
     return files
 
 folder = "your_path_folder/formats/"
