@@ -7,6 +7,7 @@ from pprint import pprint
 from collections import OrderedDict
 from PyPDF2 import PdfFileReader
 
+
 def getfiles(folder, extension):
     # Get the list of PDF files
     files = []
@@ -15,15 +16,18 @@ def getfiles(folder, extension):
         files.append(file)
     return files
 
+
 def readini(fname):
     #  Read .ini file
     with open(fname) as file:
         result = file.readlines()
     return result
 
+
 def getformfields(obj, tree=None, retval=None, fileobj=None):
     # Got this function from the resource:
-    # https://exceptionshub.com/how-to-extract-pdf-fields-from-a-filled-out-form-in-python.html
+    # https://exceptionshub.com/how-to-extract-pdf-fields-from-a-filled
+    # -out-form-in-python.html
 
     """
     Extracts field data if this PDF contains interactive form fields.
@@ -36,8 +40,9 @@ def getformfields(obj, tree=None, retval=None, fileobj=None):
         default, the mapping name is used for keys.
     :rtype: dict, or ``None`` if form data could not be located.
     """
-    fieldAttributes = {'/FT': 'Field Type', '/Parent': 'Parent', '/T': 'Field Name', '/TU': 'Alternate Field Name',
-                       '/TM': 'Mapping Name', '/Ff': 'Field Flags', '/V': 'Value', '/DV': 'Default Value'}
+    fieldAttributes = {'/FT': 'Field Type', '/Parent': 'Parent',
+    '/T': 'Field Name', '/TU': 'Alternate Field Name', '/TM': 'Mapping Name',
+    '/Ff': 'Field Flags', '/V': 'Value', '/DV': 'Default Value'}
     if retval is None:
         retval = OrderedDict()
         catalog = obj.trailer["/Root"]
@@ -48,24 +53,22 @@ def getformfields(obj, tree=None, retval=None, fileobj=None):
             return None
     if tree is None:
         return retval
-
     obj._checkKids(tree, retval, fileobj)
     for attr in fieldAttributes:
         if attr in tree:
             # Tree is a field
             obj._buildField(tree, retval, fileobj, fieldAttributes)
             break
-
     if "/Fields" in tree:
         fields = tree["/Fields"]
         for f in fields:
             field = f.getObject()
             obj._buildField(field, retval, fileobj, fieldAttributes)
-
     return retval
 
+
 def getfields(fn):
-    # Read form fields
+    # Read form  fields
     pdf = PdfFileReader(open(fn, 'rb'))
     fields = getformfields(pdf)
     return OrderedDict((k, v.get('/V', '')) for k, v in fields.items())
@@ -103,15 +106,71 @@ def gettextfields(i1, i2, fn):
                         # This works as long as the value is on the row below
                         # with the same column as the searched textfield
                         dic[textfield[0]] = table[table.index(row)+1][i]
-
     # Return the .ini-file that shall be used and
     # a dictionary with the textfields
-    return inifile, dic
+    return dic
+
+
+def selectlist(all_lines, k, v):
+    all_lines.append("""function selectedIdx(s, v) {
+    for (var i = 0; i < s.options.length; i++) {
+        if (s.options[i].text == v) {s.options[i].selected = true; return;}
+    }
+}\n""")
+    return all_lines
+
+
+def createscript(i1, i2, fields, txtfields, fn):
+    all_lines = []
+    # Extract file name without file extension
+    filename = os.path.splitext(os.path.basename(fn))[0]
+    # Add file extension '.txt'
+    filename = filename + ".txt"
+
+    # Find the correct .ini file to use by finding a text in the pdf
+    # that is specific for that file.
+    with pdfplumber.open(fn) as pdf:
+        text_in_pdf = pdf.pages[0].extract_text()
+    if "Cod. Client" in text_in_pdf:
+        inifile = i1
+    elif "Cliente / Customer" in text_in_pdf:
+        inifile = i2
+    else:
+        inifile = []
+    selectedIdx_exist = False
+    for line in inifile:
+        if "|" in line:
+            formfield = line.strip('\n').split("|")
+            if formfield[1] == 'e':
+                field = formfield[0]
+                value = fields[field]
+                all_lines.append(
+                "document.getElementById('"+field+"').value ='"+value+"'\n")
+            elif formfield[1] == 's':
+                field = formfield[0]
+                value = fields[field]
+                if not selectedIdx_exist:
+                    all_lines = selectlist(all_lines, field, value)
+                    selectedIdx_exist = True
+                all_lines.append("selectedIdx(document.getElementById('"
+                +field+"'), '"+value+"')\n")
+    # Save text file
+    #with open(filename, "a") as file:
+    for text in txtfields:
+        if txtfields[text]:
+            all_lines.append("document.getElementById('"+text+"').value = '"
+            +txtfields[text]+"'\n")
+
+    with open(filename, "w") as file:
+        #for line in all_lines:
+        file.writelines(all_lines)
+    return None
 
 
 def execute():
-    folder = "your_path/formats/"
+    folder = "/your folder/formats/"
     extension = "*.pdf"
+
     try:
         i1 = readini('i1.ini') # Read the 1st .ini file
         i2 = readini('i2.ini') # Read the 2nd .ini file
@@ -121,26 +180,16 @@ def execute():
         for file in files:
             # Get textfields that are specified in the .ini file,
             # the inifile contains the .ini file that was used.
-            inifile, textfields = gettextfields(i1, i2, file)
+            textfields = gettextfields(i1, i2, file)
+
             # Find form fields and its values.
             formfields = getfields(file)
-            # Join the textfields into the same dictionary as formfields
-            for textfield in textfields:
-                formfields[textfield] = textfields[textfield]
-            # Remove formfields that are not specified in the inifile
-            valid_forms = []
-            for line in inifile:
-                valid_forms.append(re.split(r'[=|]', line)[0])
-            for field in formfields.copy():
-                if field not in valid_forms:
-                    formfields.pop(field)
 
-            print("-"*20," Fields ","-"*20)
-            pprint(formfields)
+            # Create script
+            createscript(i1, i2, formfields, textfields, file)
 
     except BaseException as msg:
         print('Error occured: ' + str(msg))
 
 if __name__ == '__main__':
     execute()
-

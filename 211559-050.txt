@@ -1,0 +1,15 @@
+document.getElementById('OR1').value ='0001'
+document.getElementById('REF1').value ='ref1'
+document.getElementById('QUAN1').value ='1'
+function selectedIdx(s, v) {
+    for (var i = 0; i < s.options.length; i++) {
+        if (s.options[i].text == v) {s.options[i].selected = true; return;}
+    }
+}
+selectedIdx(document.getElementById('CON1'), 'Concept 1')
+document.getElementById('DES1').value ='boxes'
+document.getElementById('OR2').value ='0002'
+document.getElementById('REF2').value ='ref2'
+document.getElementById('QUAN2').value ='1'
+selectedIdx(document.getElementById('CON2'), 'Concept 2')
+document.getElementById('DES2').value ='bottles'
